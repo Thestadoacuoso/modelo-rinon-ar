@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Visor 3D · Riñón V10</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <style>
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#091019;font-family:Arial,sans-serif;color:white}
+    #tag{position:fixed;z-index:20;left:14px;top:14px;padding:10px 13px;border-radius:10px;background:#07101dcc}
+  </style>
+</head>
+<body>
+<div id="tag">Visor 3D · pose calibrada</div>
+
+<a-scene embedded vr-mode-ui="enabled:false"
+         renderer="antialias:true; colorManagement:true;"
+         background="color:#091019">
+  <a-assets timeout="60000">
+    <a-asset-item id="renalAsset" src="./assets/modelo.glb"></a-asset-item>
+  </a-assets>
+
+  <a-entity id="poseRoot"
+            rotation="-84.9 173.1 0"
+            scale="0.031700 0.031700 0.031700">
+    <a-entity id="renalModel" gltf-model="#renalAsset"></a-entity>
+  </a-entity>
+
+  <a-light type="ambient" intensity="1.2"></a-light>
+  <a-light type="directional" intensity="1.2" position="-2 4 3"></a-light>
+
+  <a-camera id="cam" position="0 0 3"
+            wasd-controls="enabled:false"
+            look-controls="enabled:false"></a-camera>
+</a-scene>
+
+<script>
+const model = document.querySelector('#renalModel');
+const root = document.querySelector('#poseRoot');
+const cam = document.querySelector('#cam');
+
+model.addEventListener('model-loaded', () => {
+  const mesh = model.getObject3D('mesh');
+
+  root.object3D.rotation.set(0,0,0);
+  root.object3D.scale.set(1,1,1);
+  model.object3D.position.set(0,0,0);
+
+  root.object3D.updateMatrixWorld(true);
+  model.object3D.updateMatrixWorld(true);
+
+  const box = new THREE.Box3().setFromObject(mesh);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+
+  model.object3D.position.set(-center.x,-center.y,-center.z);
+
+  root.setAttribute('rotation','-84.9 173.1 0');
+  root.setAttribute('scale','0.031700 0.031700 0.031700');
+
+  cam.object3D.position.set(0,0,3);
+  cam.object3D.lookAt(new THREE.Vector3(0,0,0));
+});
+</script>
+</body>
+</html>
