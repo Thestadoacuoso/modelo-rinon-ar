@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  >
+  <meta name="theme-color" content="#091019">
+
+  <title>Modelo renal 3D · Ver en mi espacio</title>
+
+  <script
+    type="module"
+    src="https://ajax.googleapis.com/ajax/libs/model-viewer/4.3.1/model-viewer.min.js">
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at 50% 28%, #172231 0%, #091019 62%, #05080d 100%);
+      color: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    body {
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #header {
+      padding: 18px 18px 8px;
+    }
+
+    #header h1 {
+      margin: 0 0 6px;
+      font-size: 21px;
+    }
+
+    #header p {
+      margin: 0;
+      max-width: 720px;
+      color: rgba(255,255,255,.72);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    #viewerWrap {
+      position: relative;
+      flex: 1;
+      min-height: 64dvh;
+      padding: 8px 12px 12px;
+    }
+
+    model-viewer {
+      width: 100%;
+      height: 100%;
+      min-height: 64dvh;
+      border-radius: 20px;
+
+      background:
+        radial-gradient(circle at center, #162233 0%, #0b111a 72%);
+
+      --poster-color: transparent;
+      --progress-bar-color: #ffffff;
+    }
+
+    #status {
+      position: absolute;
+      z-index: 20;
+      left: 24px;
+      right: 24px;
+      top: 20px;
+      padding: 10px 13px;
+      border-radius: 12px;
+      background: rgba(4,8,14,.72);
+      color: rgba(255,255,255,.90);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    #arButton {
+      position: absolute;
+      z-index: 30;
+      left: 50%;
+      bottom: 28px;
+      transform: translateX(-50%);
+      min-width: 245px;
+      border: 0;
+      border-radius: 999px;
+      padding: 15px 22px;
+      color: #fff;
+      background: #2563eb;
+      font-size: 15px;
+      font-weight: 800;
+      box-shadow: 0 10px 35px rgba(0,0,0,.34);
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    #arButton:active {
+      transform: translateX(-50%) scale(.97);
+    }
+
+    #arButton[disabled] {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    #instructions {
+      margin: 0 14px 18px;
+      padding: 14px 16px;
+      border-radius: 15px;
+      background: rgba(255,255,255,.055);
+      border: 1px solid rgba(255,255,255,.08);
+      font-size: 13px;
+      line-height: 1.55;
+      color: rgba(255,255,255,.82);
+    }
+
+    #instructions strong {
+      color: #fff;
+    }
+
+    .step {
+      margin-bottom: 4px;
+    }
+
+    .step:last-child {
+      margin-bottom: 0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="header">
+    <h1>Modelo renal 3D</h1>
+    <p>
+      Coloca el riñón en tu entorno y después muévelo, gíralo y cambia su tamaño con los gestos del visor AR.
+    </p>
+  </div>
+
+  <div id="viewerWrap">
+
+    <div id="status">
+      Cargando modelo 3D calibrado…
+    </div>
+
+    <model-viewer
+      id="renalViewer"
+
+      src="./assets/modelo_ar_calibrado.glb?v=final-hilio-movil"
+
+      alt="Modelo renal 3D texturizado"
+
+      camera-controls
+
+      touch-action="pan-y"
+
+      shadow-intensity="0.22"
+
+      shadow-softness="1"
+
+      exposure="0.55"
+
+      environment-image="neutral"
+
+      loading="eager"
+
+      reveal="auto"
+
+      ar
+
+      ar-modes="scene-viewer webxr"
+
+      ar-placement="floor"
+
+      ar-scale="auto"
+
+      camera-orbit="0deg 75deg 105%"
+
+      min-camera-orbit="auto auto 45%"
+
+      max-camera-orbit="auto auto 300%"
+    >
+    </model-viewer>
+
+    <button
+      id="arButton"
+      type="button"
+      disabled
+    >
+      CARGANDO MODELO…
+    </button>
+
+  </div>
+
+  <div id="instructions">
+
+    <div class="step">
+      <strong>1.</strong>
+      Toca “VER RIÑÓN EN MI ESPACIO”.
+    </div>
+
+    <div class="step">
+      <strong>2.</strong>
+      Detecta una superficie para hacer la colocación inicial.
+    </div>
+
+    <div class="step">
+      <strong>3.</strong>
+      Después de colocarlo, arrástralo para moverlo.
+    </div>
+
+    <div class="step">
+      <strong>4.</strong>
+      Pellizca con dos dedos para hacerlo más grande o más pequeño.
+    </div>
+
+    <div class="step">
+      <strong>5.</strong>
+      El GLB conserva la orientación calibrada y no se le aplica otra rotación desde el HTML.
+    </div>
+
+  </div>
+
+  <script type="module">
+
+    const viewer =
+      document.querySelector("#renalViewer");
+
+    const status =
+      document.querySelector("#status");
+
+    const arButton =
+      document.querySelector("#arButton");
+
+    viewer.addEventListener(
+      "load",
+      () => {
+        status.textContent =
+          "Modelo calibrado listo ✓";
+
+        arButton.disabled =
+          false;
+
+        arButton.textContent =
+          "VER RIÑÓN EN MI ESPACIO";
+      }
+    );
+
+    viewer.addEventListener(
+      "error",
+      event => {
+        status.textContent =
+          "ERROR: no se pudo cargar assets/modelo_ar_calibrado.glb.";
+
+        arButton.disabled =
+          true;
+
+        arButton.textContent =
+          "ERROR CARGANDO MODELO";
+
+        console.error(event);
+      }
+    );
+
+    arButton.addEventListener(
+      "click",
+      async () => {
+        try {
+          status.textContent =
+            "Abriendo realidad aumentada…";
+
+          await viewer.activateAR();
+        }
+
+        catch(error) {
+          console.error(
+            "No se pudo iniciar AR:",
+            error
+          );
+
+          status.textContent =
+            "No se pudo iniciar AR en este dispositivo.";
+        }
+      }
+    );
+
+    viewer.addEventListener(
+      "ar-status",
+      event => {
+        const estado =
+          event.detail.status;
+
+        if (estado === "session-started") {
+          status.textContent =
+            "AR iniciada · busca una superficie para colocarlo.";
+        }
+
+        else if (estado === "object-placed") {
+          status.textContent =
+            "Riñón colocado ✓ · ya puedes moverlo y cambiar su tamaño.";
+        }
+
+        else if (estado === "failed") {
+          status.textContent =
+            "No fue posible iniciar AR en este dispositivo.";
+        }
+      }
+    );
+
+  </script>
+
+</body>
+</html>
