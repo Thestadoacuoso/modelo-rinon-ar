@@ -1,0 +1,1395 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  >
+
+  <meta name="theme-color" content="#091019">
+
+  <title>Modelo renal 3D · AR interactiva</title>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #091019;
+      color: white;
+      font-family: Arial, Helvetica, sans-serif;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #gestureLayer {
+      position: fixed;
+      z-index: 10;
+      inset: 0;
+      touch-action: none;
+      pointer-events: auto;
+    }
+
+    #top {
+      position: fixed;
+      z-index: 40;
+      left: 12px;
+      right: 12px;
+      top: 12px;
+      padding: 11px 14px;
+      border-radius: 14px;
+      background: rgba(5,10,17,.76);
+      backdrop-filter: blur(8px);
+      pointer-events: none;
+    }
+
+    #top strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 16px;
+    }
+
+    #status {
+      font-size: 13px;
+      color: rgba(255,255,255,.83);
+    }
+
+    #help {
+      position: fixed;
+      z-index: 40;
+      left: 50%;
+      bottom: 88px;
+      transform: translateX(-50%);
+      width: min(94vw, 680px);
+      padding: 9px 12px;
+      border-radius: 13px;
+      background: rgba(5,10,17,.72);
+      text-align: center;
+      font-size: 12px;
+      line-height: 1.45;
+      pointer-events: none;
+    }
+
+    #controls {
+      position: fixed;
+      z-index: 50;
+      left: 50%;
+      bottom: 14px;
+      transform: translateX(-50%);
+      width: min(96vw, 720px);
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 7px;
+      pointer-events: auto;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 15px;
+      background: rgba(6,12,20,.92);
+      color: white;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 5px 20px rgba(0,0,0,.28);
+      touch-action: manipulation;
+    }
+
+    button.primary {
+      background: #2563eb;
+    }
+
+    button:disabled {
+      opacity: .42;
+    }
+
+    button:active {
+      transform: scale(.96);
+    }
+
+    #arButtonHost {
+      position: fixed;
+      z-index: 60;
+      right: 14px;
+      top: 80px;
+      pointer-events: auto;
+    }
+
+    #arButtonHost button {
+      position: static !important;
+      width: auto !important;
+      min-width: 180px !important;
+      height: auto !important;
+      padding: 11px 15px !important;
+      border: 0 !important;
+      border-radius: 999px !important;
+      background: #2563eb !important;
+      color: white !important;
+      font: 800 13px Arial, Helvetica, sans-serif !important;
+      opacity: 1 !important;
+    }
+
+    #loading {
+      position: fixed;
+      z-index: 100;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: #091019;
+      color: white;
+      pointer-events: none;
+      transition: opacity .3s ease;
+    }
+
+    #loading.hide {
+      opacity: 0;
+    }
+
+    .spinner {
+      width: 42px;
+      height: 42px;
+      border: 4px solid rgba(255,255,255,.18);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="loading">
+    <div class="spinner"></div>
+    <div>Cargando modelo renal…</div>
+  </div>
+
+  <div id="top">
+    <strong>Modelo renal 3D · AR interactiva</strong>
+    <div id="status">Cargando modelo calibrado…</div>
+  </div>
+
+  <div id="arButtonHost"></div>
+
+  <div id="help">
+    Círculo = superficie detectada · 1 dedo = rotar ·
+    2 dedos = mover libremente · pellizco = cambiar tamaño
+  </div>
+
+  <div id="controls">
+    <button id="placeBtn" class="primary" disabled>COLOCAR AQUÍ</button>
+    <button id="repositionBtn" disabled>Reubicar</button>
+    <button id="resetBtn" disabled>Restablecer pose</button>
+  </div>
+
+  <div id="gestureLayer"></div>
+
+  <script type="module">
+
+    import * as THREE from "three";
+    import { ARButton } from "three/addons/webxr/ARButton.js";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+
+    /* =========================================================
+       CONFIGURACIÓN
+       ========================================================= */
+
+    const MODEL_URL =
+      "./assets/modelo_ar_calibrado.glb?v=color-fijo-circulo-1";
+
+    /*
+      Tamaño inicial objetivo del conjunto completo.
+      Se calcula automáticamente para evitar que aparezca gigante.
+      Puedes cambiar 0.22 por 0.18 o 0.26 si luego quieres afinarlo.
+    */
+    const TARGET_MAX_SIZE_M = 0.22;
+
+    /*
+      Iluminación FIJA.
+      No usamos la luz del entorno real para modificar el órgano.
+    */
+    const AMBIENT_INTENSITY = 0.82;
+    const KEY_INTENSITY = 0.48;
+
+
+    /* =========================================================
+       DOM
+       ========================================================= */
+
+    const statusEl =
+      document.querySelector("#status");
+
+    const loading =
+      document.querySelector("#loading");
+
+    const gestureLayer =
+      document.querySelector("#gestureLayer");
+
+    const placeBtn =
+      document.querySelector("#placeBtn");
+
+    const repositionBtn =
+      document.querySelector("#repositionBtn");
+
+    const resetBtn =
+      document.querySelector("#resetBtn");
+
+    const arButtonHost =
+      document.querySelector("#arButtonHost");
+
+
+    /* =========================================================
+       ESCENA
+       ========================================================= */
+
+    const scene =
+      new THREE.Scene();
+
+    const camera =
+      new THREE.PerspectiveCamera(
+        60,
+        window.innerWidth / window.innerHeight,
+        0.01,
+        50
+      );
+
+    const renderer =
+      new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance"
+      });
+
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, 2)
+    );
+
+    renderer.setSize(
+      window.innerWidth,
+      window.innerHeight
+    );
+
+    renderer.xr.enabled = true;
+
+    /*
+      Mantener el color de las texturas.
+      Sin exposición automática ni tone mapping que pueda blanquearlas.
+    */
+    renderer.outputColorSpace =
+      THREE.SRGBColorSpace;
+
+    renderer.toneMapping =
+      THREE.NoToneMapping;
+
+    document.body.prepend(
+      renderer.domElement
+    );
+
+
+    /* =========================================================
+       LUZ FIJA — NO DEPENDE DE LA HABITACIÓN
+       ========================================================= */
+
+    const hemi =
+      new THREE.HemisphereLight(
+        0xffffff,
+        0x3b4652,
+        AMBIENT_INTENSITY
+      );
+
+    scene.add(hemi);
+
+    const key =
+      new THREE.DirectionalLight(
+        0xffffff,
+        KEY_INTENSITY
+      );
+
+    key.position.set(
+      -2,
+      4,
+      3
+    );
+
+    scene.add(key);
+
+
+    /* =========================================================
+       CONTENEDORES
+       ========================================================= */
+
+    /*
+      placementRoot = posición en el mundo.
+      interactionRoot = giro y escala del usuario.
+
+      Así el plano detectado NO modifica la orientación horneada.
+    */
+
+    const placementRoot =
+      new THREE.Group();
+
+    const interactionRoot =
+      new THREE.Group();
+
+    interactionRoot.rotation.order =
+      "YXZ";
+
+    placementRoot.add(
+      interactionRoot
+    );
+
+    scene.add(
+      placementRoot
+    );
+
+    placementRoot.visible =
+      false;
+
+    let placed =
+      false;
+
+    let modelReady =
+      false;
+
+    let initialAutoScale =
+      1.0;
+
+    let currentScale =
+      1.0;
+
+    let rotationX =
+      0;
+
+    let rotationY =
+      0;
+
+
+    /* =========================================================
+       CARGAR MODELO
+       ========================================================= */
+
+    const loader =
+      new GLTFLoader();
+
+    loader.load(
+
+      MODEL_URL,
+
+      gltf => {
+
+        const model =
+          gltf.scene;
+
+        /*
+          El GLB ya trae la orientación correcta.
+          No se agrega ninguna rotación.
+        */
+        model.position.set(
+          0,
+          0,
+          0
+        );
+
+        model.rotation.set(
+          0,
+          0,
+          0
+        );
+
+        model.scale.set(
+          1,
+          1,
+          1
+        );
+
+        /*
+          Reducimos reflejos sin destruir texturas ni normal maps.
+          La luz será fija, por lo que el órgano ya no cambiará
+          según la iluminación real de la habitación.
+        */
+        model.traverse(
+
+          child => {
+
+            if (!child.isMesh) {
+              return;
+            }
+
+            child.frustumCulled =
+              false;
+
+            const materials =
+              Array.isArray(child.material)
+                ? child.material
+                : [child.material];
+
+            for (const material of materials) {
+
+              if (!material) {
+                continue;
+              }
+
+              /*
+                Nada metálico y bastante rugoso:
+                evita reflejos blancos exagerados.
+              */
+              if ("metalness" in material) {
+                material.metalness = 0.0;
+              }
+
+              if ("roughness" in material) {
+                material.roughness =
+                  Math.max(
+                    material.roughness ?? 0.8,
+                    0.82
+                  );
+              }
+
+              /*
+                Evitar environment maps accidentales.
+              */
+              if ("envMapIntensity" in material) {
+                material.envMapIntensity = 0.0;
+              }
+
+              /*
+                Las texturas de color deben interpretarse como sRGB.
+              */
+              if (material.map) {
+                material.map.colorSpace =
+                  THREE.SRGBColorSpace;
+
+                material.map.needsUpdate =
+                  true;
+              }
+
+              material.needsUpdate =
+                true;
+            }
+          }
+        );
+
+        interactionRoot.add(
+          model
+        );
+
+        /*
+          Autoescala:
+          limita el tamaño máximo inicial para que no aparezca gigante.
+        */
+        model.updateMatrixWorld(true);
+
+        const box =
+          new THREE.Box3().setFromObject(model);
+
+        const size =
+          new THREE.Vector3();
+
+        box.getSize(size);
+
+        const maxDim =
+          Math.max(
+            size.x,
+            size.y,
+            size.z
+          );
+
+        if (
+          Number.isFinite(maxDim) &&
+          maxDim > 0
+        ) {
+          initialAutoScale =
+            TARGET_MAX_SIZE_M /
+            maxDim;
+        }
+
+        currentScale =
+          initialAutoScale;
+
+        interactionRoot.scale.setScalar(
+          currentScale
+        );
+
+        modelReady =
+          true;
+
+        statusEl.textContent =
+          "Modelo listo ✓ · inicia AR y busca una superficie.";
+
+        loading.classList.add(
+          "hide"
+        );
+
+        setTimeout(
+          () => {
+            loading.style.display =
+              "none";
+          },
+          350
+        );
+      },
+
+      xhr => {
+
+        if (xhr.total) {
+
+          const p =
+            Math.round(
+              xhr.loaded /
+              xhr.total *
+              100
+            );
+
+          statusEl.textContent =
+            `Cargando modelo… ${p}%`;
+        }
+      },
+
+      error => {
+
+        console.error(error);
+
+        statusEl.textContent =
+          "ERROR cargando assets/modelo_ar_calibrado.glb";
+      }
+    );
+
+
+    /* =========================================================
+       WEBXR
+       ========================================================= */
+
+    const arButton =
+      ARButton.createButton(
+
+        renderer,
+
+        {
+          requiredFeatures: [
+            "hit-test"
+          ],
+
+          optionalFeatures: [
+            "dom-overlay",
+            "local-floor"
+          ],
+
+          domOverlay: {
+            root:
+              document.body
+          }
+        }
+      );
+
+    arButton.textContent =
+      "INICIAR AR";
+
+    arButtonHost.appendChild(
+      arButton
+    );
+
+
+    /* =========================================================
+       RETÍCULA CIRCULAR
+       ========================================================= */
+
+    /*
+      Éste es el círculo que querías.
+      Es nuestro, no el cuadrado de Scene Viewer.
+    */
+
+    const reticleGroup =
+      new THREE.Group();
+
+    reticleGroup.matrixAutoUpdate =
+      false;
+
+    reticleGroup.visible =
+      false;
+
+    const outerRing =
+      new THREE.Mesh(
+
+        new THREE.RingGeometry(
+          0.045,
+          0.065,
+          64
+        )
+        .rotateX(
+          -Math.PI / 2
+        ),
+
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.95,
+          side: THREE.DoubleSide,
+          toneMapped: false
+        })
+      );
+
+    const innerRing =
+      new THREE.Mesh(
+
+        new THREE.RingGeometry(
+          0.012,
+          0.017,
+          48
+        )
+        .rotateX(
+          -Math.PI / 2
+        ),
+
+        new THREE.MeshBasicMaterial({
+          color: 0x5ee7ff,
+          transparent: true,
+          opacity: 0.95,
+          side: THREE.DoubleSide,
+          toneMapped: false
+        })
+      );
+
+    reticleGroup.add(
+      outerRing
+    );
+
+    reticleGroup.add(
+      innerRing
+    );
+
+    scene.add(
+      reticleGroup
+    );
+
+    let hitTestSource =
+      null;
+
+    let hitTestSourceRequested =
+      false;
+
+
+    function resetHitTest() {
+
+      hitTestSource =
+        null;
+
+      hitTestSourceRequested =
+        false;
+
+      reticleGroup.visible =
+        false;
+
+      placeBtn.disabled =
+        true;
+    }
+
+
+    renderer.xr.addEventListener(
+
+      "sessionstart",
+
+      () => {
+
+        statusEl.textContent =
+          "AR activa · mueve lentamente el celular para detectar una superficie.";
+
+        resetHitTest();
+      }
+    );
+
+
+    renderer.xr.addEventListener(
+
+      "sessionend",
+
+      () => {
+
+        statusEl.textContent =
+          "Sesión AR finalizada.";
+
+        resetHitTest();
+      }
+    );
+
+
+    /* =========================================================
+       COLOCACIÓN
+       ========================================================= */
+
+    function placeModelAtCircle() {
+
+      if (
+        !reticleGroup.visible ||
+        !modelReady
+      ) {
+        return;
+      }
+
+      const position =
+        new THREE.Vector3();
+
+      position.setFromMatrixPosition(
+        reticleGroup.matrix
+      );
+
+      /*
+        Sólo copiamos la POSICIÓN del círculo.
+        La rotación del plano se ignora por completo.
+        Esto mantiene el riñón PARADO tal como está horneado.
+      */
+      placementRoot.position.copy(
+        position
+      );
+
+      placementRoot.rotation.set(
+        0,
+        0,
+        0
+      );
+
+      placementRoot.quaternion.identity();
+
+      rotationX =
+        0;
+
+      rotationY =
+        0;
+
+      currentScale =
+        initialAutoScale;
+
+      interactionRoot.rotation.set(
+        0,
+        0,
+        0,
+        "YXZ"
+      );
+
+      interactionRoot.scale.setScalar(
+        currentScale
+      );
+
+      placementRoot.visible =
+        true;
+
+      placed =
+        true;
+
+      reticleGroup.visible =
+        false;
+
+      placeBtn.disabled =
+        true;
+
+      repositionBtn.disabled =
+        false;
+
+      resetBtn.disabled =
+        false;
+
+      statusEl.textContent =
+        "Riñón colocado ✓ · ahora puedes moverlo libremente.";
+    }
+
+
+    placeBtn.addEventListener(
+
+      "click",
+
+      event => {
+
+        event.stopPropagation();
+
+        placeModelAtCircle();
+      }
+    );
+
+
+    repositionBtn.addEventListener(
+
+      "click",
+
+      event => {
+
+        event.stopPropagation();
+
+        placed =
+          false;
+
+        placementRoot.visible =
+          false;
+
+        repositionBtn.disabled =
+          true;
+
+        resetBtn.disabled =
+          true;
+
+        statusEl.textContent =
+          "Busca otra superficie y pulsa COLOCAR AQUÍ.";
+      }
+    );
+
+
+    resetBtn.addEventListener(
+
+      "click",
+
+      event => {
+
+        event.stopPropagation();
+
+        rotationX =
+          0;
+
+        rotationY =
+          0;
+
+        currentScale =
+          initialAutoScale;
+
+        interactionRoot.rotation.set(
+          0,
+          0,
+          0,
+          "YXZ"
+        );
+
+        interactionRoot.scale.setScalar(
+          currentScale
+        );
+
+        statusEl.textContent =
+          "Pose y tamaño iniciales restaurados.";
+      }
+    );
+
+
+    /* =========================================================
+       GESTOS
+       ========================================================= */
+
+    const pointers =
+      new Map();
+
+    let previousSingle =
+      null;
+
+    let previousMidpoint =
+      null;
+
+    let previousDistance =
+      null;
+
+
+    function midpoint(
+      a,
+      b
+    ) {
+
+      return {
+        x:
+          (a.x + b.x) / 2,
+
+        y:
+          (a.y + b.y) / 2
+      };
+    }
+
+
+    function distance(
+      a,
+      b
+    ) {
+
+      return Math.hypot(
+        b.x - a.x,
+        b.y - a.y
+      );
+    }
+
+
+    function clearGestureReferences() {
+
+      previousSingle =
+        null;
+
+      previousMidpoint =
+        null;
+
+      previousDistance =
+        null;
+    }
+
+
+    gestureLayer.addEventListener(
+
+      "pointerdown",
+
+      event => {
+
+        gestureLayer.setPointerCapture(
+          event.pointerId
+        );
+
+        pointers.set(
+
+          event.pointerId,
+
+          {
+            x:
+              event.clientX,
+
+            y:
+              event.clientY
+          }
+        );
+
+        clearGestureReferences();
+      }
+    );
+
+
+    gestureLayer.addEventListener(
+
+      "pointermove",
+
+      event => {
+
+        if (
+          !pointers.has(
+            event.pointerId
+          )
+        ) {
+          return;
+        }
+
+        pointers.set(
+
+          event.pointerId,
+
+          {
+            x:
+              event.clientX,
+
+            y:
+              event.clientY
+          }
+        );
+
+        if (!placed) {
+          return;
+        }
+
+        const pts =
+          Array.from(
+            pointers.values()
+          );
+
+
+        /* -----------------------------------------------------
+           1 DEDO = ROTAR
+           ----------------------------------------------------- */
+
+        if (
+          pts.length === 1
+        ) {
+
+          const p =
+            pts[0];
+
+          if (
+            previousSingle
+          ) {
+
+            const dx =
+              p.x -
+              previousSingle.x;
+
+            const dy =
+              p.y -
+              previousSingle.y;
+
+            rotationY +=
+              dx * 0.008;
+
+            rotationX +=
+              dy * 0.008;
+
+            rotationX =
+              THREE.MathUtils.euclideanModulo(
+                rotationX + Math.PI,
+                Math.PI * 2
+              ) - Math.PI;
+
+            rotationY =
+              THREE.MathUtils.euclideanModulo(
+                rotationY + Math.PI,
+                Math.PI * 2
+              ) - Math.PI;
+
+            interactionRoot.rotation.set(
+              rotationX,
+              rotationY,
+              0,
+              "YXZ"
+            );
+          }
+
+          previousSingle = {
+            ...p
+          };
+
+          previousMidpoint =
+            null;
+
+          previousDistance =
+            null;
+        }
+
+
+        /* -----------------------------------------------------
+           2 DEDOS = MOVER EN EL ESPACIO + PINCH
+           ----------------------------------------------------- */
+
+        else if (
+          pts.length >= 2
+        ) {
+
+          const a =
+            pts[0];
+
+          const b =
+            pts[1];
+
+          const mid =
+            midpoint(
+              a,
+              b
+            );
+
+          const dist =
+            distance(
+              a,
+              b
+            );
+
+
+          /*
+            MOVER LIBREMENTE EN EL PLANO DE LA PANTALLA:
+            izquierda/derecha + arriba/abajo.
+
+            Ya NO lo obligamos a permanecer pegado al suelo.
+          */
+          if (
+            previousMidpoint
+          ) {
+
+            const dx =
+              mid.x -
+              previousMidpoint.x;
+
+            const dy =
+              mid.y -
+              previousMidpoint.y;
+
+            const xrCamera =
+              renderer.xr.getCamera(
+                camera
+              );
+
+            const q =
+              new THREE.Quaternion();
+
+            xrCamera.getWorldQuaternion(
+              q
+            );
+
+            const right =
+              new THREE.Vector3(
+                1,
+                0,
+                0
+              )
+              .applyQuaternion(
+                q
+              )
+              .normalize();
+
+            const up =
+              new THREE.Vector3(
+                0,
+                1,
+                0
+              )
+              .applyQuaternion(
+                q
+              )
+              .normalize();
+
+            const moveFactor =
+              0.00065;
+
+            placementRoot.position.addScaledVector(
+              right,
+              dx * moveFactor
+            );
+
+            placementRoot.position.addScaledVector(
+              up,
+              -dy * moveFactor
+            );
+          }
+
+
+          /*
+            PINCH = GRANDE / PEQUEÑO
+          */
+          if (
+            previousDistance &&
+            previousDistance > 0
+          ) {
+
+            const ratio =
+              dist /
+              previousDistance;
+
+            currentScale *=
+              ratio;
+
+            currentScale =
+              THREE.MathUtils.clamp(
+                currentScale,
+                initialAutoScale * 0.30,
+                initialAutoScale * 4.0
+              );
+
+            interactionRoot.scale.setScalar(
+              currentScale
+            );
+          }
+
+          previousMidpoint = {
+            ...mid
+          };
+
+          previousDistance =
+            dist;
+
+          previousSingle =
+            null;
+        }
+      }
+    );
+
+
+    function removePointer(
+      event
+    ) {
+
+      pointers.delete(
+        event.pointerId
+      );
+
+      clearGestureReferences();
+    }
+
+
+    gestureLayer.addEventListener(
+      "pointerup",
+      removePointer
+    );
+
+    gestureLayer.addEventListener(
+      "pointercancel",
+      removePointer
+    );
+
+
+    /* =========================================================
+       RESPONSIVE
+       ========================================================= */
+
+    window.addEventListener(
+
+      "resize",
+
+      () => {
+
+        camera.aspect =
+          window.innerWidth /
+          window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(
+          window.innerWidth,
+          window.innerHeight
+        );
+      }
+    );
+
+
+    /* =========================================================
+       LOOP XR + HIT TEST
+       ========================================================= */
+
+    renderer.setAnimationLoop(
+
+      (
+        timestamp,
+        frame
+      ) => {
+
+        if (frame) {
+
+          const session =
+            renderer.xr.getSession();
+
+          if (
+            !hitTestSourceRequested
+          ) {
+
+            session
+            .requestReferenceSpace(
+              "viewer"
+            )
+            .then(
+
+              referenceSpace => {
+
+                session
+                .requestHitTestSource({
+                  space:
+                    referenceSpace
+                })
+                .then(
+
+                  source => {
+
+                    hitTestSource =
+                      source;
+                  }
+                );
+              }
+            );
+
+            session.addEventListener(
+
+              "end",
+
+              () => {
+
+                hitTestSourceRequested =
+                  false;
+
+                hitTestSource =
+                  null;
+              }
+            );
+
+            hitTestSourceRequested =
+              true;
+          }
+
+          if (
+            hitTestSource
+          ) {
+
+            const referenceSpace =
+              renderer.xr.getReferenceSpace();
+
+            const hitTestResults =
+              frame.getHitTestResults(
+                hitTestSource
+              );
+
+            if (
+              hitTestResults.length
+            ) {
+
+              const hit =
+                hitTestResults[0];
+
+              const pose =
+                hit.getPose(
+                  referenceSpace
+                );
+
+              reticleGroup.matrix.fromArray(
+                pose.transform.matrix
+              );
+
+              if (
+                !placed
+              ) {
+
+                reticleGroup.visible =
+                  true;
+
+                placeBtn.disabled =
+                  false;
+
+                statusEl.textContent =
+                  "Superficie detectada ✓ · coloca el riñón sobre el círculo.";
+              }
+            }
+
+            else if (
+              !placed
+            ) {
+
+              reticleGroup.visible =
+                false;
+
+              placeBtn.disabled =
+                true;
+
+              statusEl.textContent =
+                "Buscando superficie… mueve lentamente el celular.";
+            }
+          }
+        }
+
+        renderer.render(
+          scene,
+          camera
+        );
+      }
+    );
+
+  </script>
+
+</body>
+</html>
