@@ -1,0 +1,1058 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+  >
+  <meta name="theme-color" content="#080d14">
+
+  <title>Modelo renal 3D · Realidad aumentada</title>
+
+  <!-- Versiones compatibles recomendadas por AR.js -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.7/aframe/build/aframe-ar.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      font-family: Arial, Helvetica, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    /*
+      Fuerza la escena a ocupar toda la pantalla.
+    */
+    a-scene {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    /*
+      Quitamos cualquier botón VR/AR de A-Frame.
+    */
+    .a-enter-vr,
+    .a-enter-ar,
+    .a-orientation-modal {
+      display: none !important;
+    }
+
+    #top {
+      position: fixed;
+      z-index: 30;
+      left: 12px;
+      right: 12px;
+      top: 12px;
+
+      padding: 11px 14px;
+
+      border-radius: 14px;
+
+      color: #fff;
+
+      background:
+        rgba(7, 12, 20, .78);
+
+      backdrop-filter:
+        blur(8px);
+
+      pointer-events: none;
+    }
+
+    #top strong {
+      display: block;
+
+      margin-bottom: 4px;
+
+      font-size: 16px;
+    }
+
+    #status {
+      font-size: 13px;
+
+      color:
+        rgba(255,255,255,.84);
+    }
+
+    #hint {
+      position: fixed;
+
+      z-index: 25;
+
+      left: 50%;
+      bottom: 78px;
+
+      transform:
+        translateX(-50%);
+
+      width:
+        min(90vw, 560px);
+
+      padding:
+        9px 13px;
+
+      border-radius: 12px;
+
+      color: #fff;
+
+      text-align: center;
+      font-size: 12px;
+
+      background:
+        rgba(7,12,20,.68);
+
+      pointer-events: none;
+    }
+
+    #controls {
+      position: fixed;
+
+      z-index: 35;
+
+      left: 50%;
+      bottom: 14px;
+
+      transform:
+        translateX(-50%);
+
+      display: flex;
+
+      flex-wrap: wrap;
+
+      justify-content: center;
+
+      gap: 8px;
+
+      width:
+        min(95vw, 620px);
+    }
+
+    button {
+      border: 0;
+
+      border-radius: 999px;
+
+      padding:
+        11px 15px;
+
+      color: #fff;
+
+      background:
+        rgba(7,12,20,.90);
+
+      font-size: 13px;
+      font-weight: 700;
+
+      touch-action:
+        manipulation;
+    }
+
+    button:active {
+      transform:
+        scale(.96);
+    }
+
+    #loading {
+      position: fixed;
+
+      z-index: 100;
+
+      inset: 0;
+
+      display: flex;
+
+      align-items: center;
+      justify-content: center;
+
+      flex-direction: column;
+
+      gap: 14px;
+
+      color: #fff;
+
+      background:
+        #080d14;
+
+      transition:
+        opacity .35s ease;
+    }
+
+    #loading.hide {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 42px;
+      height: 42px;
+
+      border-radius: 50%;
+
+      border:
+        4px solid
+        rgba(255,255,255,.18);
+
+      border-top-color:
+        #fff;
+
+      animation:
+        spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform:
+          rotate(360deg);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ======================================================
+       PANTALLA DE CARGA
+       ====================================================== -->
+
+  <div id="loading">
+    <div class="spinner"></div>
+
+    <div id="loadingText">
+      Preparando cámara y modelo renal…
+    </div>
+  </div>
+
+
+  <!-- ======================================================
+       UI
+       ====================================================== -->
+
+  <div id="top">
+
+    <strong>
+      Modelo renal 3D · V10 texturizado
+    </strong>
+
+    <div id="status">
+      Inicializando cámara…
+    </div>
+
+  </div>
+
+
+  <div id="hint">
+    Apunta al marcador Hiro completo.
+    El riñón queda fijo; muévete con el celular para verlo desde otros ángulos.
+  </div>
+
+
+  <div id="controls">
+
+    <button id="smaller">
+      − Tamaño
+    </button>
+
+    <button id="larger">
+      + Tamaño
+    </button>
+
+    <button id="transparent">
+      Riñón transparente
+    </button>
+
+    <button id="reset">
+      Restablecer
+    </button>
+
+  </div>
+
+
+  <!-- ======================================================
+       ESCENA AR
+       ====================================================== -->
+
+  <a-scene
+
+    embedded
+
+    vr-mode-ui="
+      enabled: false
+    "
+
+    device-orientation-permission-ui="
+      enabled: false
+    "
+
+    renderer="
+      antialias: true;
+      alpha: true;
+      colorManagement: true;
+      physicallyCorrectLights: true;
+    "
+
+    arjs="
+      sourceType: webcam;
+      videoTexture: true;
+      debugUIEnabled: false;
+      detectionMode: mono;
+      trackingMethod: best;
+    "
+
+  >
+
+
+    <!-- ====================================================
+         ASSETS
+         ==================================================== -->
+
+    <a-assets timeout="60000">
+
+      <a-asset-item
+
+        id="renalAsset"
+
+        src="./assets/modelo.glb"
+
+      ></a-asset-item>
+
+    </a-assets>
+
+
+
+    <!-- ====================================================
+         MARCADOR HIRO
+         ==================================================== -->
+
+    <a-marker
+
+      id="marker"
+
+      preset="hiro"
+
+      emitevents="true"
+
+      smooth="true"
+
+      smoothCount="15"
+
+      smoothTolerance="0.008"
+
+      smoothThreshold="3"
+
+    >
+
+
+      <!--
+        POSE MAESTRA CALIBRADA
+
+        position="0 0 0"
+        rotation="-84.9 173.1 0"
+        scale="0.031700 0.031700 0.031700"
+      -->
+
+      <a-entity
+
+        id="poseRoot"
+
+        position="
+          0
+          0
+          0
+        "
+
+        rotation="
+          -84.9
+          173.1
+          0
+        "
+
+        scale="
+          0.031700
+          0.031700
+          0.031700
+        "
+
+      >
+
+        <a-entity
+
+          id="renalModel"
+
+          gltf-model="#renalAsset"
+
+        ></a-entity>
+
+      </a-entity>
+
+    </a-marker>
+
+
+
+    <!-- ====================================================
+         LUCES
+         ==================================================== -->
+
+    <a-light
+
+      type="ambient"
+
+      color="#ffffff"
+
+      intensity="1.20"
+
+    ></a-light>
+
+
+    <a-light
+
+      type="directional"
+
+      color="#ffffff"
+
+      intensity="1.20"
+
+      position="
+        -2
+        4
+        3
+      "
+
+    ></a-light>
+
+
+    <a-light
+
+      type="directional"
+
+      color="#dbe8ff"
+
+      intensity="0.45"
+
+      position="
+        3
+        2
+        -2
+      "
+
+    ></a-light>
+
+
+
+    <!-- ====================================================
+         CÁMARA
+         ==================================================== -->
+
+    <a-entity camera></a-entity>
+
+  </a-scene>
+
+
+
+  <script>
+
+    const scene =
+      document.querySelector(
+        "a-scene"
+      );
+
+
+    const model =
+      document.querySelector(
+        "#renalModel"
+      );
+
+
+    const root =
+      document.querySelector(
+        "#poseRoot"
+      );
+
+
+    const marker =
+      document.querySelector(
+        "#marker"
+      );
+
+
+    const statusEl =
+      document.querySelector(
+        "#status"
+      );
+
+
+    const loading =
+      document.querySelector(
+        "#loading"
+      );
+
+
+    const loadingText =
+      document.querySelector(
+        "#loadingText"
+      );
+
+
+    /* ======================================================
+       POSE CALIBRADA
+       ====================================================== */
+
+    const POSE = {
+
+      px: 0.0,
+
+      py: 0.0,
+
+      pz: 0.0,
+
+      rx: -84.9,
+
+      ry: 173.1,
+
+      rz: 0.0,
+
+      scale: 0.031700
+
+    };
+
+
+    let scaleNow =
+      POSE.scale;
+
+
+    let kidneyTransparent =
+      false;
+
+
+
+    function applyPose() {
+
+      root.setAttribute(
+
+        "position",
+
+        `${POSE.px} ${POSE.py} ${POSE.pz}`
+
+      );
+
+
+      root.setAttribute(
+
+        "rotation",
+
+        `${POSE.rx} ${POSE.ry} ${POSE.rz}`
+
+      );
+
+
+      root.setAttribute(
+
+        "scale",
+
+        `${scaleNow} ${scaleNow} ${scaleNow}`
+
+      );
+
+    }
+
+
+
+    /* ======================================================
+       CENTRAR GLB
+       ====================================================== */
+
+    function centerModel() {
+
+      const mesh =
+        model.getObject3D(
+          "mesh"
+        );
+
+
+      if (!mesh) {
+
+        statusEl.textContent =
+          "El GLB cargó, pero todavía no encuentro su malla.";
+
+        return;
+
+      }
+
+
+      /*
+        Medimos la geometría sin transformación del contenedor.
+      */
+
+      root.object3D.position.set(
+        0,
+        0,
+        0
+      );
+
+
+      root.object3D.rotation.set(
+        0,
+        0,
+        0
+      );
+
+
+      root.object3D.scale.set(
+        1,
+        1,
+        1
+      );
+
+
+      model.object3D.position.set(
+        0,
+        0,
+        0
+      );
+
+
+      root.object3D.updateMatrixWorld(
+        true
+      );
+
+
+      model.object3D.updateMatrixWorld(
+        true
+      );
+
+
+      const box =
+        new THREE.Box3()
+        .setFromObject(
+          mesh
+        );
+
+
+      const center =
+        new THREE.Vector3();
+
+
+      box.getCenter(
+        center
+      );
+
+
+      /*
+        Centramos internamente el GLB.
+      */
+
+      model.object3D.position.set(
+
+        -center.x,
+
+        -center.y,
+
+        -center.z
+
+      );
+
+
+      model.object3D.updateMatrixWorld(
+        true
+      );
+
+
+      /*
+        Restauramos la pose calibrada.
+      */
+
+      applyPose();
+
+
+      statusEl.textContent =
+        "Modelo listo · busca el marcador Hiro.";
+
+
+      setTimeout(
+
+        () => {
+
+          loading.classList.add(
+            "hide"
+          );
+
+        },
+
+        250
+
+      );
+
+    }
+
+
+
+    /* ======================================================
+       ESTADO DE ESCENA
+       ====================================================== */
+
+    scene.addEventListener(
+
+      "loaded",
+
+      () => {
+
+        statusEl.textContent =
+          "Escena AR iniciada · cargando modelo…";
+
+      }
+
+    );
+
+
+
+    /* ======================================================
+       GLB
+       ====================================================== */
+
+    model.addEventListener(
+
+      "model-loaded",
+
+      () => {
+
+        statusEl.textContent =
+          "Modelo cargado · centrando geometría…";
+
+
+        setTimeout(
+
+          centerModel,
+
+          120
+
+        );
+
+      }
+
+    );
+
+
+    model.addEventListener(
+
+      "model-error",
+
+      e => {
+
+        statusEl.textContent =
+          "ERROR: no se pudo cargar assets/modelo.glb";
+
+
+        loadingText.textContent =
+          "No se pudo cargar assets/modelo.glb";
+
+
+        console.error(
+          "Error GLB:",
+          e
+        );
+
+      }
+
+    );
+
+
+
+    /* ======================================================
+       MARCADOR
+       ====================================================== */
+
+    marker.addEventListener(
+
+      "markerFound",
+
+      () => {
+
+        statusEl.textContent =
+          "Marcador detectado · riñón anclado.";
+
+      }
+
+    );
+
+
+    marker.addEventListener(
+
+      "markerLost",
+
+      () => {
+
+        statusEl.textContent =
+          "Marcador perdido · vuelve a enfocar la hoja.";
+
+      }
+
+    );
+
+
+
+    /* ======================================================
+       ESCALA
+       ====================================================== */
+
+    document
+    .getElementById(
+      "smaller"
+    )
+    .addEventListener(
+
+      "click",
+
+      () => {
+
+        scaleNow =
+          Math.max(
+            0.005,
+            scaleNow * 0.88
+          );
+
+
+        applyPose();
+
+      }
+
+    );
+
+
+    document
+    .getElementById(
+      "larger"
+    )
+    .addEventListener(
+
+      "click",
+
+      () => {
+
+        scaleNow =
+          Math.min(
+            0.080,
+            scaleNow * 1.12
+          );
+
+
+        applyPose();
+
+      }
+
+    );
+
+
+
+    /* ======================================================
+       TRANSPARENCIA DEL RIÑÓN
+       ====================================================== */
+
+    function setKidneyTransparency(
+      enabled
+    ) {
+
+      const obj =
+        model.getObject3D(
+          "mesh"
+        );
+
+
+      if (!obj) {
+
+        return;
+
+      }
+
+
+      obj.traverse(
+
+        node => {
+
+          if (
+            !node.isMesh ||
+            !node.material
+          ) {
+
+            return;
+
+          }
+
+
+          const txt =
+
+            `${node.name || ""} ` +
+
+            `${node.parent?.name || ""} ` +
+
+            `${node.material?.name || ""}`;
+
+
+          const lower =
+            txt.toLowerCase();
+
+
+          const isKidney =
+
+            lower.includes(
+              "rinon"
+            )
+
+            ||
+
+            lower.includes(
+              "riñon"
+            )
+
+            ||
+
+            lower.includes(
+              "kidney"
+            );
+
+
+          if (!isKidney) {
+
+            return;
+
+          }
+
+
+          if (
+            !node.userData.materialCloned
+          ) {
+
+            node.material =
+              node.material.clone();
+
+
+            node.userData.materialCloned =
+              true;
+
+          }
+
+
+          node.material.transparent =
+            enabled;
+
+
+          node.material.opacity =
+
+            enabled
+
+              ? 0.22
+
+              : 1.0;
+
+
+          node.material.depthWrite =
+            !enabled;
+
+
+          node.material.needsUpdate =
+            true;
+
+        }
+
+      );
+
+    }
+
+
+
+    document
+    .getElementById(
+      "transparent"
+    )
+    .addEventListener(
+
+      "click",
+
+      e => {
+
+        kidneyTransparent =
+          !kidneyTransparent;
+
+
+        setKidneyTransparency(
+          kidneyTransparent
+        );
+
+
+        e.currentTarget.textContent =
+
+          kidneyTransparent
+
+            ? "Riñón sólido"
+
+            : "Riñón transparente";
+
+      }
+
+    );
+
+
+
+    /* ======================================================
+       RESET
+       ====================================================== */
+
+    document
+    .getElementById(
+      "reset"
+    )
+    .addEventListener(
+
+      "click",
+
+      () => {
+
+        scaleNow =
+          POSE.scale;
+
+
+        kidneyTransparent =
+          false;
+
+
+        applyPose();
+
+
+        setKidneyTransparency(
+          false
+        );
+
+
+        document
+        .getElementById(
+          "transparent"
+        )
+        .textContent =
+          "Riñón transparente";
+
+
+        statusEl.textContent =
+          "Pose original restablecida.";
+
+      }
+
+    );
+
+
+    applyPose();
+
+  </script>
+
+</body>
+</html>
